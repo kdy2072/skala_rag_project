@@ -1,4 +1,4 @@
-# AI Startup Investment Evaluation Agent
+# Health Care Startup Investment Evaluation Agent
 본 프로젝트는 헬스케어 스타트업에 대한 투자 가능성을 자동으로 평가하는 에이전트를 설계하고 구현한 실습 프로젝트입니다.
 
 ## Overview
