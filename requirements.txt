@@ -1,0 +1,14 @@
+langchain
+langchain-openai
+langchain-community
+langchain-core
+langgraph
+langchain-teddynote
+langchain-opentutorial
+sentence-transformers
+python-dotenv
+faiss-cpu
+pypdf
+pymupdf
+tavily-python
+huggingface_hub[hf_xet]
