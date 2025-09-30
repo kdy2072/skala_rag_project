@@ -1,13 +1,11 @@
-# class MarketEvalAgent:
-#     def run(self, input_json: dict) -> dict:
-#         input_json.update({
-#             "market_eval": "원격 의료 시장에서 연평균 12% 성장",
-#             "market_size": "2025년까지 10조원 규모 예상",
-#             "market_trend": "비대면 진료 수요 증가, 고령화에 따른 헬스케어 수요 확대",
-#             "regulation_risk": "원격의료 관련 법안 개정 지연 가능성"
-#         })
-#         return input_json
-    
+# 라이브러리 설치 필요시
+# pip install pdfplumber annotated-types certifi anyio
+
+#ToDo
+# input 하드코딩상태에서 checkpoint/.json load하는 것으로 바꾸기 ================= 완료
+# 기 구현된 json 저장로직 checkpoint/디렉터리에 저장하는 것으로 바꾸기 ============= 완료
+# 리턴 json타입 디벨롭=> 
+
 from __future__ import annotations
 from langchain_teddynote.tools.tavily import TavilySearch
 import os
@@ -16,40 +14,11 @@ import uuid
 from typing import Any, Dict, List, Optional
 from dotenv import load_dotenv
 from datetime import datetime
-# from langchain_openai import ChatOpenAI
-# from langchain_teddynote.evaluator import GroundednessChecker
+from langchain_openai import ChatOpenAI
+from langchain_teddynote.evaluator import GroundednessChecker
 
 load_dotenv()
 
-# -------------------------------
-# 테스트용 input 예시 (하드코딩)
-# -------------------------------
-input_json = [
-    {
-        "owner": "의료AI 전문의 출신, 실행력 우수",
-        "core_tech": "근골격계 특화 AI 자세추정 모델",
-        "pros": "글로벌 인재 채용, 제품 파이프라인 다수",
-        "patents": "17개 특허 보유",
-        "investments": "2021~2023 투자유치, 주요 투자자 LG, 삼성",
-        "company_name": "EverEx",
-        "tech_summary": "AI 기반 자세추정 핵심 기술",
-        "differentiation_points": "정밀도 높은 모델, 특허 17개",
-        "technical_risks": "데이터 품질 및 확장성 리스크",
-        "patents_and_papers": "17개 특허, 논문 5개",
-    },
-    {
-        "owner": "",
-        "core_tech": "클라우드 AI  모델",
-        "pros": "글로벌 인재 채용, 제품 파이프라인 다수",
-        "patents": "17개 특허 보유",
-        "investments": "",
-        "company_name": "Oracle",
-        "tech_summary": "AI",
-        "differentiation_points": "",
-        "technical_risks": "데이터 품질 및 확장성 리스크",
-        "patents_and_papers": "17개 특허, 논문 5개",
-    }
-]
 
 
 class MarketEvalAgent:
@@ -63,9 +32,11 @@ class MarketEvalAgent:
         """
         초기화: 출력 디렉토리 설정
         """
-        # self.outdir = outdir or os.getenv("MARKET_OUTDIR", "./outputs")
-        # os.makedirs(self.outdir, exist_ok=True)
+
+        #Tavily 검색툴
         self.tavily_tool = TavilySearch()
+        
+        # 오픈ai모델 
         self.relevance_checker = GroundednessChecker(
             llm=ChatOpenAI(model="gpt-4o-mini", temperature=0),
             target="question-retrieval"
@@ -74,11 +45,14 @@ class MarketEvalAgent:
 
 
 
-
-    def _filter_relevant(self, company_name: str, results: list, query: str) -> list:
-        """검색 결과에서 회사 시장성 관련성이 높은 것만 필터링"""
+    # 관련성 평가 yes or no
+    def _filter_relevant(self, company: str, results: list, query: str, limit: int = 3) -> list:
+        """검색 결과에서 회사 시장성 관련성이 높은 것만 필터링 (최대 limit개만 검사)"""
         filtered = []
-        for r in results:
+        for i, r in enumerate(results):
+            if i >= limit:  # 루프 제한
+                break
+
             # 문자열/딕셔너리 안전 처리
             if isinstance(r, dict):
                 title = r.get("title") or ""
@@ -86,11 +60,12 @@ class MarketEvalAgent:
             else:
                 title, context = str(r), str(r)
 
+            # 관련성 체크
             response = self.relevance_checker.invoke(
-                {"question": f"{company_name} {query}", "context": context}
+                {"question": f"{company} {query}", "context": context}
             )
 
-            if response.score.lower().startswith("y"):  # "yes"
+            if str(response.score).lower().startswith("y"):  # "yes"
                 filtered.append(r)
 
         return filtered
@@ -99,7 +74,7 @@ class MarketEvalAgent:
         """Tavily 검색을 활용한 시장성 데이터 생성"""
         tech_summery = tech.get("tech_summery", "핵십기술")
         tech_core = tech.get("core_tech", "핵십기술")
-        tech_compony = tech.get("tech_compony", "기엄명")
+        tech_compony = tech.get("compony_name", "기엄명")
 
 
         # 1. 산업 동향
@@ -136,7 +111,7 @@ class MarketEvalAgent:
         result_regulation = self._filter_relevant(tech_summery, result_regulation, "의료 규제")
         # market.json 스키마 리턴
         return {
-            "industry_trends": [r.get("title") for r in result_trends],
+            "industry_trends": [r.get("content") for r in result_trends],
 
             "market_size": [r.get("content") for r in result_market],
 
@@ -156,16 +131,15 @@ class MarketEvalAgent:
             results.append(company)
         return results
 
-    def save_results(self, results: List[Dict[str, Any]]) -> None:
+    
+    def save_results(self, results: List[Dict[str, Any]], path: str) -> None:
         """
-        회사별 결과를 JSON 파일로 저장
+        동일한 JSON 파일에 덮어쓰기 (업데이트 저장)
+        :param results: run() 실행 결과
+        :param path: 입력/출력 파일 경로 (예: ./checkpoint/01_company_desc_semantic.json)
         """
-        for company in results:
-            name = company.get("company_name") or f"unknown-{uuid.uuid4().hex[:6]}"
-            slug = name.lower().replace(" ", "-")
-            path = os.path.join(self.outdir, f"{slug}_result.json")
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump(company, f, ensure_ascii=False, indent=4)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(results, f, ensure_ascii=False, indent=2)
 
 
 # -------------------------------
@@ -173,6 +147,13 @@ class MarketEvalAgent:
 # -------------------------------
 if __name__ == "__main__":
     evaluator = MarketEvalAgent()
+    
+    # 입력 파일 경로
+    input_path = "./checkpoint/01_company_desc_semantic.json"
+
+    # JSON 파일 읽기
+    with open(input_path, "r", encoding="utf-8") as f:
+        input_json = json.load(f)
 
     # 테스트용 input_json 직접 실행
     results = evaluator.run(input_json)
@@ -181,5 +162,5 @@ if __name__ == "__main__":
     print(json.dumps(results, ensure_ascii=False, indent=2))
 
     # 결과 저장
-    # evaluator.save_results(results)
+    evaluator.save_results(results, input_path)
     # print("✅ 회사별 결과 JSON이 ./outputs 폴더에 저장되었습니다.")
