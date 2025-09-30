@@ -2,8 +2,8 @@
 # pip install pdfplumber annotated-types certifi anyio
 
 #ToDo
-# input 하드코딩상태에서 checkpoint/.json load하는 것으로 바꾸기
-# 기 구현된 json 저장로직 checkpoint/디렉터리에 저장하는 것으로 바꾸기
+# input 하드코딩상태에서 checkpoint/.json load하는 것으로 바꾸기 ================= 완료
+# 기 구현된 json 저장로직 checkpoint/디렉터리에 저장하는 것으로 바꾸기 ============= 완료
 # 리턴 json타입 디벨롭=> 
 
 from __future__ import annotations
@@ -19,35 +19,6 @@ from langchain_teddynote.evaluator import GroundednessChecker
 
 load_dotenv()
 
-# -------------------------------
-# 테스트용 input 예시 (하드코딩)
-# -------------------------------
-input_json = [
-    {
-        "owner": "의료AI 전문의 출신, 실행력 우수",
-        "core_tech": "근골격계 특화 AI 자세추정 모델",
-        "pros": "글로벌 인재 채용, 제품 파이프라인 다수",
-        "patents": "17개 특허 보유",
-        "investments": "2021~2023 투자유치, 주요 투자자 LG, 삼성",
-        "company_name": "EverEx",
-        "tech_summary": "AI 기반 자세추정 핵심 기술",
-        "differentiation_points": "정밀도 높은 모델, 특허 17개",
-        "technical_risks": "데이터 품질 및 확장성 리스크",
-        "patents_and_papers": "17개 특허, 논문 5개",
-    },
-    {
-        "owner": "",
-        "core_tech": "클라우드 AI  모델",
-        "pros": "글로벌 인재 채용, 제품 파이프라인 다수",
-        "patents": "17개 특허 보유",
-        "investments": "",
-        "company_name": "Oracle",
-        "tech_summary": "AI",
-        "differentiation_points": "",
-        "technical_risks": "데이터 품질 및 확장성 리스크",
-        "patents_and_papers": "17개 특허, 논문 5개",
-    }
-]
 
 
 class MarketEvalAgent:
@@ -161,16 +132,14 @@ class MarketEvalAgent:
         return results
 
     
-    # def save_results(self, results: List[Dict[str, Any]]) -> None:
-    #     """
-    #     회사별 결과를 JSON 파일로 저장
-    #     """
-    #     for company in results:
-    #         name = company.get("company_name") or f"unknown-{uuid.uuid4().hex[:6]}"
-    #         slug = name.lower().replace(" ", "-")
-    #         path = os.path.join(self.outdir, f"{slug}_result.json")
-    #         with open(path, "w", encoding="utf-8") as f:
-    #             json.dump(company, f, ensure_ascii=False, indent=4)
+    def save_results(self, results: List[Dict[str, Any]], path: str) -> None:
+        """
+        동일한 JSON 파일에 덮어쓰기 (업데이트 저장)
+        :param results: run() 실행 결과
+        :param path: 입력/출력 파일 경로 (예: ./checkpoint/01_company_desc_semantic.json)
+        """
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(results, f, ensure_ascii=False, indent=2)
 
 
 # -------------------------------
@@ -178,6 +147,13 @@ class MarketEvalAgent:
 # -------------------------------
 if __name__ == "__main__":
     evaluator = MarketEvalAgent()
+    
+    # 입력 파일 경로
+    input_path = "./checkpoint/01_company_desc_semantic.json"
+
+    # JSON 파일 읽기
+    with open(input_path, "r", encoding="utf-8") as f:
+        input_json = json.load(f)
 
     # 테스트용 input_json 직접 실행
     results = evaluator.run(input_json)
@@ -186,5 +162,5 @@ if __name__ == "__main__":
     print(json.dumps(results, ensure_ascii=False, indent=2))
 
     # 결과 저장
-    # evaluator.save_results(results)
+    evaluator.save_results(results, input_path)
     # print("✅ 회사별 결과 JSON이 ./outputs 폴더에 저장되었습니다.")
