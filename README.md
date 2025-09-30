@@ -25,6 +25,8 @@
  
 - Agent A: Assesses technical competitiveness
 - Agent B: Evaluates market opportunity and team capability
+- Investment Agent : Scorecard Method을 이용하여 기준 점수에 따라 투자 or 보류 결정 에이전트
+- Report Agent : 투자로 결정난 스타트업에 대하여 보고서를 작성하는 에이전트
 
 ## Architecture
 (그래프 이미지)
@@ -32,12 +34,14 @@
 ## Directory Structure
 ├── data/                  # 스타트업 PDF 문서
 ├── agents/                # 평가 기준별 Agent 모듈
-├── prompts/               # 프롬프트 템플릿
-├── outputs/               # 평가 결과 저장
-├── app.py                 # 실행 스크립트
+├── font/                  # 폰트 템플릿
+├── reports/               # 평가 결과 저장
+├── main.py                # 실행 스크립트
 └── README.md
 
 ## Contributors 
-- 고대영 : Prompt Engineering, Agent Design 
-- 김민제 : PDF Parsing, Retrieval Agent
-- 김유진 : 
+- 고대영 : 투자 판단 에이전트, 보고서 생성 에이전트 개발
+- 김민제 : 기술 요약 에이전트 개발
+- 김유진 : 경쟁사 비교 에이전트 개발
+- 장주한 : 스타트업 탐색 에이전트 개발
+- 조영우 : 시장성 평가 에이전트 개발
