@@ -34,7 +34,7 @@
 
 ## Agents Detail
 
-1)  Tech Summary Agent
+  Tech Summary Agent
      ## 핵심요소
      ### 1. RAG 기반 지능적 특허 검색
      - 기존: 하드코딩된 키워드
