@@ -82,32 +82,100 @@
 - **PDF → VectorDB 자동화 파이프라인 (임베딩 모델/청킹/Index 구조 개선 및 확장성 반영)**  
 - **RAG + WebHybrid Explorer Agent (RAGsearch, WebSearch 오케스트레이션 agent, JSON 산출)**  
 ---
-## 2번 테크서머리(김민재) 추가해야함
+## 2. TechSummaryAgent (김민제)
+
+### 2-1. 요약
+- **구현 목적**: Explorer Agent 산출물(IR PDF 기반 기업별 분석 JSON)을 입력으로 받아, **LangGraph 기반 순차 실행 파이프라인**으로 기업의 기술 분석과 요약을 자동화  
+- **분석 항목**:  
+  - 기술 요약 (`tech_summary`)  
+  - 강점과 약점 (`strengths_and_weaknesses`)  
+  - 차별화 요소 (`differentiation_points`)  
+  - 기술적 리스크 (`technical_risks`)  
+  - 특허 및 논문 관련 정보 (`patents_and_papers`)  
+- **산출물**: 기존 checkpoint JSON(`01_company_desc_semantic.json`)에 덮어쓰기 저장  
+
+### 2-2. 실행 파이프라인
+- **입력**: Explorer Agent가 생성한 JSON  
+- **처리 흐름** (LangGraph `StateGraph` 기반, 순차 실행)  
+  1. **기술 정의** → IR 기반 기술 설명 생성  
+  2. **강점과 약점 분석** → 긍정/부정 포인트 추출  
+  3. **차별화 요소 도출** → 경쟁사 대비 차별 포인트 정리  
+  4. **기술적 리스크 평가** → 확장성, 규제, 상용화 리스크 요약  
+  5. **특허/논문 분석** → KIPRIS/캐시 데이터 병합  
+  6. **최종 JSON 저장**  
+
+### 2-3. 클래스 및 구성 요소
+- **`TechAnalysisState` (TypedDict)**  
+  - 파이프라인 전체 상태 저장 (기업명, 핵심 기술, 특허/캐시 데이터, 최종 출력 항목들)  
+- **`TechSummaryAgent` (메인 클래스)**  
+  - LangGraph 그래프 초기화 및 실행 관리  
+  - 각 단계 노드 함수 정의 및 호출  
+  - 결과 JSON 저장 로직 포함  
+- **`PatentAgent`**  
+  - 기업명/기술 키워드 기반 특허 데이터 수집  
+  - KIPRIS API 활용, 데이터 부족 시 mock 데이터 생성  
+- **`RelevanceChecker`**  
+  - LLM 기반 relevance 평가 (출력 검증)  
+- **LangGraph `StateGraph`**  
+  - 위 함수들을 순차적으로 실행하는 그래프  
+  - 
+### 2-4. RAG 사용 맥락
+- **FAISS VectorDB 활용**: Explorer Agent가 구축한 `KURE-v1 (1024-dim)` 임베딩 기반 VectorDB에서 기업별 청크 검색  
+- **RAG 구조**: 각 기술 분석 단계에서 기업명 기반으로 VectorDB를 조회 → LLM 프롬프트에 포함하여 답변 생성  
+- **웹/특허 데이터와 혼합**: VectorDB 검색 결과 + Tavily 검색 결과 + KIPRIS 특허 API 데이터를 병합해 다층적인 근거 확보  
+
+### 2-5. 기술 스택 및 구현 요소
+- **LLM**: OpenAI GPT-4o-mini (분석, 요약, JSON 스키마화)  
+- **VectorDB**: FAISS + HuggingFace `KURE-v1` 임베딩 (1024차원, semantic chunking 적용)  
+- **검색/특허 API**: Tavily Web Search, KIPRIS 특허 검색  
+- **워크플로우 엔진**: LangGraph `StateGraph` (순차 실행, 분기 없음)  
+- **Infra**: Python, dotenv, JSON 입출력  
+
+### 2-6. 최종 구현
+- **LangGraph 기반 순차 실행 파이프라인**: 기술 요약 → 강점/약점 → 차별점 → 리스크 → 특허 분석을 단계별 실행  
+- **실제 기능**: 입력 JSON을 기반으로 5개 분석 항목을 채우고 결과를 동일 JSON 파일에 저장  
+- **특징**: Agent라는 명칭은 사용했으나, 동적 툴 선택은 없고 정해진 순서의 함수 실행 구조  
+- **RAG 통합**: Explorer Agent의 VectorDB 검색 결과를 기반으로 LLM 응답을 강화
+
 ---
 ### 3. MarketEvalAgent (조영우)
 ### 3-1. 요약
-- **구현 목적**: 기업의 핵심 기술 정보를 입력받아, Tavily 검색을 통해 **산업 동향 / 시장 규모 / 규제 환경**을 자동 수집  
-- **검색 엔진 활용**: `langchain_teddynote.tools.TavilySearch`로 최근 30~60일 뉴스 검색  
-- **관련성 필터링**: `GroundednessChecker`(ChatOpenAI `gpt-4o-mini` 기반)로 검색 결과 relevance 평가, 비관련 정보 제거  
-- **스키마화된 출력**: `industry_trends`, `market_size`, `regulatory_barriers`, `evidence` 필드를 포함한 dict 리턴  
-- **증거(evidence) 생성**: 검색 결과의 title, url, accessed_at 날짜 기반 evidence 리스트 저장  
+- **구현 목적**: 기업의 핵심 기술 정보를 입력받아 Tavily 검색 + LLM 기반으로 **산업 동향 / 시장 규모 / 규제 환경 / 고객 세그먼트**를 자동 수집 및 요약  
+- **검색 도구**: TavilySearch (최대 5건, advanced 모드) 활용  
+- **연관성 검증**: GroundednessChecker(LLM 기반 relevance 평가)와 중복 제거(set) 적용  
+- **증강 검색(RAG)**: 초기 검색 결과에서 키워드 추출 → 추가 검색으로 보강  
+- **출력 구조**: 각 카테고리별 200자 이내 요약(summary) + evidence(제목, URL, 날짜) 포함  
+
 
 ### 3-2. 실행 파이프라인
-- 입력: 기존 기업 정보 JSON (`checkpoint/01_company_desc_semantic.json`)  
-- 처리: 기업별 market data 생성 후 기존 dict에 병합  
-- 출력: 동일 JSON 파일을 overwrite 방식으로 업데이트 저장  
-- 주요 함수 흐름: `run()` → `generate_market_data()` → `_filter_relevant()` → `save_results()`
+1. **입력**: 기존 기업 정보 JSON (`checkpoint/01_company_desc_semantic.json`)  
+2. **처리 흐름**:
+   - Tavily로 카테고리별 검색 실행
+   - `_filter_relevant` → LLM으로 연관성 검증 및 중복 제거, 최대 2개만 채택
+   - `_rag_search` → 초기 검색에서 키워드 추출 후 재검색, 결과 보강
+   - `_validate_and_format` → 결과 요약(200자 이내) 및 evidence 생성
+3. **출력**: 기업 dict에 시장성 정보 병합 후 동일 JSON 파일로 overwrite 저장  
+4. **주요 함수**:
+   - `_filter_relevant()` → 연관성 검증 + 중복 제거
+   - `_rag_search()` → 초기 검색 → 키워드 추출 → 재검색
+   - `_validate_and_format()` → 요약 생성 + evidence 2개 포함
+   - `generate_market_data()` → 4개 카테고리(산업·시장·규제·고객) 순차 실행
+   - `run()` / `save_results()` → 전체 실행 및 JSON 저장  
+
+---
 
 ### 3-3. 기술 스택 및 구현 요소
-- **LLM**: OpenAI GPT-4o-mini (GroundednessChecker 기반)  
-- **검색**: TavilySearch (뉴스, 규제 환경 크롤링)  
-- **Infra**: Python, dotenv, JSON 입출력 기반 처리  
-- **특징**: 단일 Agent 클래스(`MarketEvalAgent`)로 input–process–save 일괄 처리 구조  
+- **LLM**: OpenAI GPT-4o-mini (GroundednessChecker, 요약 체인)  
+- **검색**: TavilySearch (advanced 모드, 다중 카테고리)  
+- **RAG Flow**: 초기 Tavily 검색 → 키워드 추출 → 재검색 → 결과 요약  
+- **특징**: **증강 검색 + 파이프라인** 구현  
 
 ### 3-4. 최종 구현
-- **기업별 시장성 평가 모듈**: 산업 동향, 시장 규모, 규제 환경 자동 수집 및 JSON 병합  
-- **검색 결과 필터링**: GPT-기반 relevance checker 적용  
-- **자동 저장 로직**: 결과를 기존 checkpoint JSON에 덮어쓰기 방식으로 저장 
+- **시장성 평가 모듈**: 산업 동향, 시장 규모, 규제 환경, 고객 세그먼트 자동 분석  
+- **증거 수집(Evidence)**: URL·제목·날짜 기반으로 최대 3개 근거 저장  
+- **자동 저장 로직**: 결과를 기존 checkpoint JSON에 덮어쓰기 방식으로 업데이트  
+- **차별점**: 초기 버전 대비 → RAG 기반 증강 검색, 고객 세그먼트 분석, 요약 생성 등 기능 확장  
+
 ---
 ### 4. CompetitorAgent (김유진)
 ### 4-1. 요약
@@ -139,11 +207,16 @@
 - **파일 입출력 루틴**: 기존 checkpoint JSON 파일에 결과 병합 저장  
 
 ---
+
 ### 5. InvestmentAgent (고대영)
+
 ---
+
 ### 6. reportagent (고대영)
+
 ---
-### 7. total_agent_graph (고대영) 
+
+### 7. total_agent_graph (장주한) 
 
 ---
 E.D
