@@ -5,35 +5,48 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
+from InvestmentState import InvestmentState
 
-# ✅ 한글 폰트 등록 (경로에 실제 폰트 파일이 있어야 함)
+# ✅ 한글 폰트 등록 (font/ 폴더에 malgun.ttf, malgunbd.ttf 넣어두기)
 pdfmetrics.registerFont(TTFont("Malgun", "font/H2MJSM.TTF"))
 pdfmetrics.registerFont(TTFont("Malgun-Bold", "font/H2GTRE.TTF"))
 
-# ✅ 스타일 재정의
-styles = getSampleStyleSheet()
-styles.add(ParagraphStyle(name="KoreanNormal", fontName="Malgun", fontSize=11, leading=14))
-styles.add(ParagraphStyle(name="KoreanHeading", fontName="Malgun-Bold", fontSize=14, leading=18, spaceAfter=10))
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.cidfonts import UnicodeCIDFont
+
+# ✅ 유니코드 한글 폰트 등록 (내장)
+pdfmetrics.registerFont(UnicodeCIDFont("HYSMyeongJo-Medium"))   # 명조체
+pdfmetrics.registerFont(UnicodeCIDFont("HYGothic-Medium"))      # 고딕체
 
 class ReportAgent:
     def __init__(self, llm=None):
         self.llm = llm or ChatOpenAI(model="gpt-4o-mini", temperature=0)
 
-    def run(self, input_json: dict, output_path=None) -> dict:
-        company_name = input_json.get("company_name", "unknown").replace(" ", "_")
+        # ✅ 스타일 재정의
+        self.styles = getSampleStyleSheet()
+        self.styles.add(ParagraphStyle(
+            name="KoreanNormal", fontName="HYSMyeongJo-Medium", fontSize=11, leading=14
+        ))
+        self.styles.add(ParagraphStyle(
+            name="KoreanHeading", fontName="HYGothic-Medium", fontSize=14, leading=18, spaceAfter=10
+        ))
+
+    def run(self, state: InvestmentState, output_path=None) -> InvestmentState:
+        company_name = state.company_name or "unknown"
+        safe_company = company_name.replace(" ", "_")
+
         if output_path is None:
-            output_path = f"reports/{company_name}_llm_report.pdf"
+            output_path = f"reports/{safe_company}_llm_report.pdf"
 
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
         # 1. LLM 프롬프트 작성
         prompt = f"""
         당신은 전문 투자 보고서 작성자입니다.
-        투자 보고서를 가지고 회사 임원들 앞에서 발표를 진행해야하는 상황입니다.
-        아래 JSON 데이터를 기반으로 해당 상황에 맞는 양식으로 헬스케어 스타트업 투자 평가 보고서를 작성하세요.
+        아래 JSON 데이터를 기반으로 헬스케어 스타트업 투자 평가 보고서를 작성하세요.
 
         JSON 데이터:
-        {json.dumps(input_json, ensure_ascii=False, indent=2)}
+        {json.dumps(state.model_dump(), ensure_ascii=False, indent=2)}
 
         보고서 구성:
         1. 표지 (회사명, 보고서 제목)
@@ -50,18 +63,20 @@ class ReportAgent:
         """
 
         response = self.llm.invoke(prompt)
-        report_text = response.content
+        report_text = response.content.strip()
+        report_text = report_text.replace("```", "").replace("json", "")
 
         # 2. PDF 저장
         doc = SimpleDocTemplate(output_path, pagesize=A4)
         story = []
 
-        # ✅ 한글 폰트 적용 스타일 사용
         for line in report_text.split("\n"):
             if line.strip():
-                story.append(Paragraph(line.strip(), styles["KoreanNormal"]))
+                story.append(Paragraph(line.strip(), self.styles["KoreanNormal"]))
                 story.append(Spacer(1, 10))
 
         doc.build(story)
 
-        return {"status": "success", "report_path": output_path}
+        # ✅ state에 report_path 저장
+        state.report_path = output_path
+        return state

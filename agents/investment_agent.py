@@ -2,7 +2,7 @@ import json
 import re
 from agents.report_agent import ReportAgent
 from langchain_openai import ChatOpenAI
-
+from InvestmentState import InvestmentState
 
 class InvestmentAgent:
     def __init__(self, llm_client=None):
@@ -84,29 +84,27 @@ class InvestmentAgent:
     def calculate_weighted_score(self, scores: dict) -> float:
         return sum(scores[k] * self.weights[k] for k in self.weights)
 
-    def run(self, input_json: list) -> dict:
-        results = []
-        for company in input_json:
-            scores = self.score_company(company)
-            total_score = self.calculate_weighted_score(scores)
+    def run(self, state: InvestmentState) -> InvestmentState:
+        # state → dict 변환
+        company_dict = state.model_dump()
 
-            if total_score >= 74:
-                decision = "투자 추천"
-                ReportAgent().run({
-                    **company,
-                    "scores": scores,
-                    "total_score": total_score,
-                    "investment_decision": decision
-                })
-            else:
-                decision = "보류"
+        # 점수 계산
+        scores = self.score_company(company_dict)
+        total_score = self.calculate_weighted_score(scores)
 
-            results.append({
-                "company_name": company.get("company_name"),
-                "scores": scores,
-                "total_score": round(total_score, 2),
-                "decision": decision,
-                "details": company
-            })
+        # state 업데이트
+        state.scores = scores
+        state.total_score = total_score
+        state.decision = "투자 추천" if total_score >= 74 else "보류"
 
-        return {"investment_results": results}
+        if state.total_score >= 74:
+            print(f"📊 {state.company_name} {state.total_score:.1f}점 → 보고서 생성 시작")
+            report_agent = ReportAgent()
+            report = report_agent.run(company_dict)   # PDF 저장
+            state.report_path = report.get("report_path")
+        else:
+            print(f"📉 {state.company_name} {state.total_score:.1f}점 → 보고서 생략")
+
+
+        return state
+

@@ -12,3 +12,4 @@ pypdf
 pymupdf
 tavily-python
 huggingface_hub[hf_xet]
+reportlab
