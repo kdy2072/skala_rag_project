@@ -8,7 +8,7 @@ class InvestmentState(BaseModel):
     core_tech: str = ""
     pros: str = ""
     patents: str = ""
-    investments: Union[str, List[Dict]] = ""   # ✅ 리스트도 허용
+    investments: Union[str, List[Dict], dict] = ""   # ✅ 리스트도 허용
 
     # TechSummaryAgent 결과
     tech_summary: str = ""
@@ -17,7 +17,7 @@ class InvestmentState(BaseModel):
     technical_risks: str = ""
     patents_and_papers: List[str] = []
     confidence_score: float = 0.0
-    
+
     # MarketEvalAgent 결과
     industry_trends: str = ""
     market_size: str = ""

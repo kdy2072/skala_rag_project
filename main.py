@@ -5,6 +5,7 @@ from agents.competitor_agent import CompetitorAgent
 from agents.investment_agent import InvestmentAgent
 from agents.report_agent import ReportAgent
 from dotenv import load_dotenv
+from agents.total_agent_graph import build_total_agent_graph
 import os
 
 load_dotenv()
@@ -26,11 +27,10 @@ def main():
         state = InvestmentAgent().run(state)
         state = ReportAgent().run(state)
         updated_states.append(state)
+    
 
-    # ✅ 최종 출력
-    for s in updated_states:
-        print("=====================================")
-        print(s.json(indent=2, ensure_ascii=False))
+    build_total_agent_graph(app=None, filename="total_agent_graph.png")
+    print("✅ 전체 그래프 저장 완료: total_agent_graph.png")
 
 if __name__ == "__main__":
     main()

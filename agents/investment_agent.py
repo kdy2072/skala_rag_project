@@ -95,13 +95,13 @@ class InvestmentAgent:
         # state 업데이트
         state.scores = scores
         state.total_score = total_score
-        state.decision = "투자 추천" if total_score >= 74 else "보류"
+        state.decision = "투자 추천" if total_score >= 80 else "보류"
 
         if state.total_score >= 74:
             print(f"📊 {state.company_name} {state.total_score:.1f}점 → 보고서 생성 시작")
             report_agent = ReportAgent()
-            report = report_agent.run(company_dict)   # PDF 저장
-            state.report_path = report.get("report_path")
+            report = report_agent.run(state)   # PDF 저장
+            state.report_path = report.report_path
         else:
             print(f"📉 {state.company_name} {state.total_score:.1f}점 → 보고서 생략")
 
