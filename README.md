@@ -178,33 +178,35 @@
 
 ---
 ### 4. CompetitorAgent (김유진)
-### 4-1. 요약
-- **구현 목적**: 기업명과 핵심 기술을 입력받아, Tavily 검색과 LLM을 활용해 가장 직접적인 경쟁사 1개를 도출  
+
+#### 4-1. 요약
+- **구현 목적**: 기업명과 핵심 기술을 state로 전달받아, Tavily 검색과 LLM을 활용해 가장 직접적인 경쟁사 1개를 도출  
 - **검색 도구**: TavilyClient (`crunchbase`, `reuters`, `bloomberg`, `techcrunch` 도메인 제한) 활용, 상위 5개 결과 및 자동 요약(answer) 수집  
 - **Agent 구성**: LangChain `create_openai_functions_agent` + `ChatOpenAI (gpt-4o-mini)`  
-- **출력 스키마**: 경쟁사 분석 JSON 생성 (main_competitors, competitor_profiles, market_positioning, product_comparison, unique_value_props, threat_analysis, MarketShare, reference_urls)  
-- **보완 로직**: 검색 결과를 문자열에서 JSON으로 parsing, 실패 시 fallback 스키마 채워넣기   
+- **출력 스키마**: 경쟁사 분석 결과를 state에 저장 (main_competitors, competitor_profiles, market_positioning, product_comparison, unique_value_props, threat_analysis, market_share, reference_urls)  
+- **보완 로직**: LLM 응답 문자열을 JSON 객체로 파싱하여 state에 저장, 실패 시 fallback 스키마 적용  
 
-### 4-2. 실행 파이프라인
-- 입력: 기존 기업 JSON 파일 (`checkpoint/01_company_desc_semantic.json`)  
-- 처리: 기업별 경쟁사 분석 실행 (`find_competitor` → JSON parsing → `update`)  
-- 출력: 같은 JSON 파일에 overwrite 저장  
+#### 4-2. 실행 파이프라인
+- **입력**: 이전 에이전트로부터 state 전달 (company_name, core_tech)  
+- **처리**: state 기반 경쟁사 분석 실행 (`find_competitor` → JSON parsing → state 업데이트)  
+- **출력**: 분석 결과를 state에 저장하여 다음 에이전트로 전달  
 - 주요 함수:  
   - `search_competitor()` → Tavily 검색 및 결과 요약  
-  - `find_competitor()` → LLM 프롬프트 기반 경쟁사 분석  
+  - `find_competitor()` → Agent 기반 경쟁사 분석  
   - `parse_competitor_analysis()` → JSON 파싱 / fallback  
-  - `analyze_multiple_companies()` → 다수 기업 순차 실행  
+  - `run()` → state 입력 및 업데이트 처리  
 
-### 4-3. 기술 스택 및 구현 요소
+#### 4-3. 기술 스택 및 구현 요소
 - **LLM**: OpenAI GPT-4o-mini (functions agent 기반)  
 - **검색**: Tavily API (고정 도메인 필터 + advanced search)  
 - **에이전트**: LangChain AgentExecutor (competitor_search tool 포함)  
-- **Infra**: Python, JSON 입출력, 정규식 기반 파서  
+- **Pipeline**: State 기반 RAG Pipeline, 에이전트 간 state 전달  
+- **Infra**: Python, InvestmentState 클래스, 정규식 기반 파서  
 
-### 4-4. 최종 구현
-- **기업별 경쟁사 분석 모듈**: Tavily 기반 경쟁사 후보 탐색 후 LLM으로 정리  
+#### 4-4. 최종 구현
+- **State 기반 경쟁사 분석 모듈**: Tavily 기반 경쟁사 후보 탐색 후 Agent를 통한 심층 분석  
 - **자동 JSON 스키마화**: 경쟁사 프로필, 포지셔닝, 위협 요인, 시장점유율 포함  
-- **파일 입출력 루틴**: 기존 checkpoint JSON 파일에 결과 병합 저장  
+- **에이전트 연결**: 이전 에이전트에서 state를 받아 분석 후 다음 에이전트로 전달
 
 ---
 
