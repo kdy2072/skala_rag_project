@@ -210,13 +210,87 @@
 
 ### 5. InvestmentAgent (고대영)
 
+#### 5-1. 요약
+- **목적**: Explorer → TechSummary → MarketEval → Competitor 단계에서 채워진 InvestmentState를 종합해 투자 적합성 점수와 최종 의사결정을 산출  
+- **방식**: Scorecard Method. 창업자, 시장성, 제품/기술력, 경쟁력, 실적, 딜 조건을 정량화해 가중 합산  
+- **출력**: 항목별 점수, 가중치 총점, 최종 판단(“투자 추천”/“보류”). “투자 추천”인 경우 자동으로 ReportAgent 호출  
+
+#### 5-2. 실행 파이프라인
+1. 입력: 이전 단계 에이전트들이 채운 InvestmentState  
+2. LLM 평가: 상태에 담긴 회사 정보를 프롬프트로 보내 각 항목 점수를 정수(0–100)로 산출  
+3. 가중치 합산  
+   - Owner 30%  
+   - Market 25%  
+   - Product 15%  
+   - Competitor 10%  
+   - Performance 10%  
+   - Deal 10%  
+4. 최종 판정: 총점 80점 이상이면 “투자 추천”, 아니면 “보류”  
+5. 자동 보고서 트리거: “투자 추천”이면 ReportAgent.run(state) 호출 → PDF 생성  
+
+#### 5-3. 기술 스택 및 구현 요소
+- **LLM**: OpenAI GPT-4o-mini (정량 점수 산출)  
+- **평가 방식**: Scorecard Method (가중치 기반 합산)  
+- **구현 요소**:  
+  - `score_company()` : LLM 프롬프트 기반 점수 산출  
+  - `calculate_weighted_score()` : 가중치 총점 계산  
+  - `run(state: InvestmentState)` : 점수 계산 → 최종 판단 → ReportAgent 연동  
+
+#### 5-4. 최종 구현
+- **LLM 기반 정량 점수화**: 기업 정보를 입력받아 0~100 점수 산출  
+- **가중치 총점 계산**: Scorecard Method 적용  
+- **자동 투자 판단**: 80점 이상이면 "투자 추천", 아니면 "보류"  
+- **보고서 생성 자동화**: 투자 추천일 경우 ReportAgent 호출 → PDF 보고서 생성  
+
 ---
 
-### 6. reportagent (고대영)
+### 6. ReportAgent (고대영)
+
+#### 6-1. 요약
+- **목적**: InvestmentAgent가 “투자 추천”으로 판정한 기업에 대해 투자 평가 보고서 PDF를 자동 생성  
+- **폰트 처리**: 프로젝트 `font/` 폴더의 한글 폰트(Malgun, HYSMyeongJo 등)를 등록해 깨짐 방지  
+- **출력 결과**: PDF는 `reports/{회사명}_llm_report.pdf`로 저장, 경로는 `state.report_path`에 기록  
+
+#### 6-2. 실행 파이프라인
+1. 입력: InvestmentState (회사명, 기술 요약, 시장성, 경쟁사 비교, 점수 및 최종 판단 등)  
+2. LLM 프롬프트: 투자 보고서 양식(표지/목차/본문/결론)에 맞춘 한국어 문단 생성  
+3. PDF 생성: ReportLab로 문단 단위 출력, 한글 폰트 적용  
+4. 출력: 생성된 PDF 경로를 `state.report_path`에 저장하고 반환  
+
+#### 6-3. 기술 스택 및 구현 요소
+- **LLM**: OpenAI GPT-4o-mini (투자 보고서 텍스트 생성)  
+- **PDF 생성**: ReportLab (Paragraph, Spacer 활용)  
+- **폰트 처리**: Malgun / HYSMyeongJo / HYGothic 폰트 지원  
+- **구현 요소**:  
+  - `run(state: InvestmentState, output_path=None)` : 보고서 생성 함수  
+  - LLM 프롬프트 기반 텍스트 생성  
+  - ReportLab 기반 PDF 저장  
+  - 경로를 `state.report_path`에 기록  
+
+#### 6-4. 최종 구현
+- **투자 추천 기업 전용 보고서 생성**  
+- **구조화된 출력**: 표지, 목차, 본문(개요/기술/시장성/경쟁사/투자판단), 결론  
+- **산출물 자동 저장**: `reports/{회사명}_llm_report.pdf`  
+- **한글 폰트 안정화**: ReportLab + 폰트 등록으로 깨짐 없는 PDF 출력  
 
 ---
 
-### 7. total_agent_graph () 
+### 7. TotalAgentGraph ()
 
+#### 7-1. 요약
+- **목적**: 전체 에이전트 파이프라인(Explorer → TechSummary → MarketEval → Competitor → Investment → Report)을 시각화  
+- **방식**: LangGraph `StateGraph` 정의 후 Mermaid 다이어그램으로 변환 및 PNG 저장  
+
+#### 7-2. 실행 파이프라인
+1. StateGraph(GraphState) 정의  
+2. 각 에이전트 노드를 순차적으로 연결: Explorer → TechSummary → MarketEval → Competitor → Investment → Report → END  
+3. `app.get_graph().draw_mermaid_png("reports/total_agent_graph.png")` 으로 다이어그램 저장  
+
+#### 7-3. 최종 구현
+- **전체 워크플로우 시각화**: 실제 실행 흐름과 동일하게 반영  
+- **결과 산출물**: `reports/total_agent_graph.png`  
+- **활용성**: README, 보고서, 프레젠테이션에 포함 가능 
+
+실제 실행 흐름과 동일하게 반영된 다이어그램.
 ---
 E.D
