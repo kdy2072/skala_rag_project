@@ -1,3 +1,5 @@
+# competitor_agent.py
+
 from InvestmentState import InvestmentState
 from tavily import TavilyClient
 from langchain.agents import AgentExecutor, create_openai_functions_agent
