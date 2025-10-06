@@ -85,57 +85,61 @@
 ## 2. TechSummaryAgent (김민제)
 
 ### 2-1. 요약
-- **구현 목적**: Explorer Agent 산출물(IR PDF 기반 기업별 분석 JSON)을 입력으로 받아, **LangGraph 기반 순차 실행 파이프라인**으로 기업의 기술 분석과 요약을 자동화  
-- **분석 항목**:  
-  - 기술 요약 (`tech_summary`)  
-  - 강점과 약점 (`strengths_and_weaknesses`)  
-  - 차별화 요소 (`differentiation_points`)  
-  - 기술적 리스크 (`technical_risks`)  
-  - 특허 및 논문 관련 정보 (`patents_and_papers`)  
-- **산출물**: 기존 checkpoint JSON(`01_company_desc_semantic.json`)에 덮어쓰기 저장  
+- **구현 목적**: IR PDF 등 내부 문서를 기반으로 분석된 초기 기업 정보 JSON을 입력받아, Agentic RAG 워크플로우를 통해 기업의 기술력을 심층 분석하고 요약 리포트를 자동 생성합니다. 이 에이전트는 정보가 불충분할 경우 스스로 판단하여 검색을 재시도하는 자가 교정(Self-Correcting) 기능이 핵심입니다.
+- **분석 항목**:
+  - 기술 요약 (`tech_summary`)
+  - 강점과 약점 (`strengths_and_weaknesses`)
+  - 차별화 요소 (`differentiation_points`)
+  - 기술적 리스크 (`technical_risks`)
+  - 특허 및 논문 관련 정보 (`patents_and_papers`)
+- **산출물**: 분석이 완료된 후, 기존 입력 JSON 파일(`01_company_desc_semantic.json`)에 상기 분석 항목들을 추가하여 덮어쓰기 방식으로 저장합니다.
 
+---
 ### 2-2. 실행 파이프라인
-- **입력**: Explorer Agent가 생성한 JSON  
-- **처리 흐름** (LangGraph `StateGraph` 기반, 순차 실행)  
-  1. **기술 정의** → IR 기반 기술 설명 생성  
-  2. **강점과 약점 분석** → 긍정/부정 포인트 추출  
-  3. **차별화 요소 도출** → 경쟁사 대비 차별 포인트 정리  
-  4. **기술적 리스크 평가** → 확장성, 규제, 상용화 리스크 요약  
-  5. **특허/논문 분석** → KIPRIS/캐시 데이터 병합  
-  6. **최종 JSON 저장**  
+- **입력**: 분석할 기업의 기본 정보가 담긴 JSON 파일
+- **처리 흐름** (LangGraph `StateGraph` 기반, 동적/조건부 실행):
+  1. **Agent (에이전트 노드)**: 초기 질문을 바탕으로 RAG, 웹 검색, 특허 검색 중 가장 적합한 도구를 동적으로 선택하고 호출합니다.
+  2. **Tools (도구 실행 노드)**: 선택된 도구를 실행하여 정보를 수집합니다.
+  3. **Grade Documents (정보 충분성 평가 노드)**: 수집된 정보가 분석에 충분한지 LLM이 평가합니다.
+  4. **Conditional Routing (조건부 분기)**:
+      - **정보 충분 시**: 최종 요약 생성 노드로 이동합니다.
+      - **정보 부족 시**: **Rewrite Query (쿼리 재작성 노드)**로 이동하여 검색어를 개선한 후, 다시 Agent 노드로 돌아가 정보 수집을 재시도하는 **루프(Loop)**를 형성합니다.
+  5. **Generate Summary (최종 요약 생성 노드)**: 루프를 통해 충분히 수집된 정보를 바탕으로 5가지 분석 항목에 대한 최종 보고서를 생성합니다.
+  6. **JSON 저장**: 최종 결과를 입력 파일에 덮어쓰기하여 저장합니다.
 
+---
 ### 2-3. 클래스 및 구성 요소
-- **`TechAnalysisState` (TypedDict)**  
-  - 파이프라인 전체 상태 저장 (기업명, 핵심 기술, 특허/캐시 데이터, 최종 출력 항목들)  
-- **`TechSummaryAgent` (메인 클래스)**  
-  - LangGraph 그래프 초기화 및 실행 관리  
-  - 각 단계 노드 함수 정의 및 호출  
-  - 결과 JSON 저장 로직 포함  
-- **`PatentAgent`**  
-  - 기업명/기술 키워드 기반 특허 데이터 수집  
-  - KIPRIS API 활용, 데이터 부족 시 mock 데이터 생성  
-- **`RelevanceChecker`**  
-  - LLM 기반 relevance 평가 (출력 검증)  
-- **LangGraph `StateGraph`**  
-  - 위 함수들을 순차적으로 실행하는 그래프  
-  - 
+- **`TechAnalysisState` (BaseModel)**
+  - LangGraph 파이프라인의 전체 상태(State)를 저장하는 데이터 구조입니다. 기업명, 핵심 기술, 누적된 메시지(검색 결과), 최종 출력 항목들을 관리합니다.
+- **`TechSummaryAgentV3` (메인 클래스)**
+  - LangGraph 그래프를 정의, 초기화하고 실행을 관리하는 핵심 클래스입니다. 에이전트, 정보 평가, 쿼리 재작성 등 각 단계에 해당하는 노드 함수들을 포함합니다.
+- **`KIPRISPatentTool`**
+  - 기업명/기술 키워드를 기반으로 KIPRIS에서 특허 데이터를 수집하는 클래스입니다. `@tool` 데코레이터가 붙은 `kipris_search_tool` 함수를 통해 에이전트가 활용합니다.
+- **`RelevanceGrade` (BaseModel)**
+  - `_grade_documents` 노드에서 LLM이 정보의 충분성을 평가한 후, 그 결과를 'yes' 또는 'no' 형태의 구조화된 데이터로 출력하기 위한 Pydantic 모델입니다.
+- **LangGraph `StateGraph`**
+  - 위 컴포넌트들을 **조건부 엣지(Conditional Edge)**로 연결하여, 단순 순차 실행이 아닌 동적이고 지능적인 에이전트 워크플로우를 구성합니다.
+
+---
 ### 2-4. RAG 사용 맥락
-- **FAISS VectorDB 활용**: Explorer Agent가 구축한 `KURE-v1 (1024-dim)` 임베딩 기반 VectorDB에서 기업별 청크 검색  
-- **RAG 구조**: 각 기술 분석 단계에서 기업명 기반으로 VectorDB를 조회 → LLM 프롬프트에 포함하여 답변 생성  
-- **웹/특허 데이터와 혼합**: VectorDB 검색 결과 + Tavily 검색 결과 + KIPRIS 특허 API 데이터를 병합해 다층적인 근거 확보  
+- **FAISS VectorDB 활용**: `nlpai-lab/KURE-v1` 임베딩 모델 기반으로 구축된 FAISS VectorDB에서 기업 관련 내부 문서 청크를 검색합니다.
+- **RAG 구조**: `rag_search_tool`은 에이전트가 사용할 수 있는 여러 도구 중 하나로 정의됩니다. 에이전트가 내부 문서 검색이 필요하다고 판단할 때 이 도구를 호출하며, 검색 결과는 LLM 프롬프트에 컨텍스트로 포함되어 답변 생성을 강화합니다.
+- **웹/특허 데이터와 혼합**: 에이전트는 RAG 검색 결과뿐만 아니라, Tavily 웹 검색 결과와 KIPRIS 특허 API 데이터를 종합적으로 수집합니다. 최종 요약 단계에서는 이 모든 출처의 정보를 결합하여 다층적인 근거를 확보합니다.
 
+---
 ### 2-5. 기술 스택 및 구현 요소
-- **LLM**: OpenAI GPT-4o-mini (분석, 요약, JSON 스키마화)  
-- **VectorDB**: FAISS + HuggingFace `KURE-v1` 임베딩 (1024차원, semantic chunking 적용)  
-- **검색/특허 API**: Tavily Web Search, KIPRIS 특허 검색  
-- **워크플로우 엔진**: LangGraph `StateGraph` (순차 실행, 분기 없음)  
-- **Infra**: Python, dotenv, JSON 입출력  
+- **LLM**: OpenAI GPT-4o-mini (분석, 요약, 동적 도구 선택)
+- **VectorDB**: FAISS + HuggingFace `nlpai-lab/KURE-v1` 임베딩
+- **검색/특허 API**: Tavily Web Search, KIPRIS 특허 검색
+- **워크플로우 엔진**: LangGraph `StateGraph` (조건부 분기 및 루프 포함)
+- **Infra**: Python, dotenv, JSON 입출력
 
+---
 ### 2-6. 최종 구현
-- **LangGraph 기반 순차 실행 파이프라인**: 기술 요약 → 강점/약점 → 차별점 → 리스크 → 특허 분석을 단계별 실행  
-- **실제 기능**: 입력 JSON을 기반으로 5개 분석 항목을 채우고 결과를 동일 JSON 파일에 저장  
-- **특징**: Agent라는 명칭은 사용했으나, 동적 툴 선택은 없고 정해진 순서의 함수 실행 구조  
-- **RAG 통합**: Explorer Agent의 VectorDB 검색 결과를 기반으로 LLM 응답을 강화
+- **LangGraph 기반 동적 실행 파이프라인**: 정해진 순서가 아닌, 에이전트의 판단에 따라 도구를 선택하고 정보의 질을 평가하며, 필요 시 쿼리를 수정해 재탐색하는 지능형 워크플로우를 구현했습니다.
+- **실제 기능**: 입력된 JSON의 기업 정보를 바탕으로 5개의 심층 분석 항목을 생성하고, 그 결과를 원본 JSON 파일에 업데이트하여 저장합니다.
+- **특징**: Agent라는 이름에 걸맞게 LLM이 직접 다음 행동(Tool Call)을 결정하는 동적 툴 선택 기능을 `bind_tools`와 `tools_condition`을 통해 구현했습니다. 이는 정해진 순서대로 함수를 실행하는 구조가 아닙니다.
+- **RAG 통합**: RAG는 파이프라인의 고정된 단계가 아니라, 에이전트가 필요에 따라 호출하는 하나의 핵심 도구로서 시스템의 분석 능력을 강화하는 역할을 수행합니다.
 
 ---
 ### 3. MarketEvalAgent (조영우)
